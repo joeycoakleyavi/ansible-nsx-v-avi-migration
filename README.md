@@ -178,6 +178,9 @@ class FilterModule(object):
         ]
 ```
 
+## Filter Workflow
+<img src="images/haproxy_to_avi_workflow.png" width="400">
+
 ## Known Issues / Limitations
 - Inline HAProxy rules are not supported
 - Block actions are not supported.
