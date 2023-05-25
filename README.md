@@ -13,7 +13,7 @@ ansible-galaxy collection install vmware.alb
 When done you can exit the virtual environment by issuing the `deactivate` command.
 
 ### Authentication
-This playbook expects a file called `avi-credentials.yml` to be located in the root directory. This is an example of the contents of that file
+This playbook expects a file called `avi-credentials.yml` to be located in the vars directory. This is an example of the contents of that file
 ```
 AVI_CREDENTIALS:
   controller: < ip or fqdn >
@@ -39,19 +39,15 @@ This Ansible playbook is designed such that an administrator can define high lev
 ### ./variables.yml
 
 ```
-STATE: present                          #This variable determines whether the objects should be created or deleted. Valid states are present or absent
-TENANT: admin                           #Defines which tenant the objects will be created in. Leave as admin if multi-tenancy is not configured.
+STATE: present
+TENANT: admin
+nsxt_cloudname: cloud_nsxt
 
-services:                               #This key determines which services will be evaulated during the playbook run.
-  # - "{{ shared_services }}"
-  # - "{{ login_443 }}"
-  # - "{{ kualtest_443 }}"
-  # - "{{ developmentApps_443 }}"
-  # - "{{ tridev_443 }}"
-  - "{{ startestinb_443 }}"
-  # - "{{ dgfinal_443 }}"
-  # - "{{ spamdev_443 }}"
-  # - "{{ stardevss_443 }}"
+services:
+  - "{{ shared_services }}"
+  - "{{ ldap_389 }}"
+  - "{{ ldap_636 }}"
+  - "{{ smtp_25 }}"
 ```
 
 An example configuration is as follows
