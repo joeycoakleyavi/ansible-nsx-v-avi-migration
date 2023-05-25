@@ -1,0 +1,34 @@
+standard_l7_443:
+  name: "standard_l7_443"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: prod
+  nsx_t_t1: prod 
+  pool:
+    - name: "standard_l7_443"
+      default_server_port: 80
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      persistence: System-Persistence-Http-Cookie
+      poolservers:
+        - "1.1.1.1"
+        - "2.2.2.2"
+        - "3.3.3.3"
+  vsvip:
+    - enabled: true
+      addr: "6.7.8.9"
+  virtual_service:
+    - name: "standard_l7_443"
+      enabled: false
+      services:
+        - port: 443
+          enable_ssl: true
+          enable_http2: false
+        - port: 80
+      application_profile: "System-Secure-HTTP"
+      network_profile: System-TCP-Proxy
+      terminate_ssl: true
+      default_pool: standard_l7_443
+      ssl_profile: System-Standard
+      certificate: "*.example.com"
+      service_engine_group: Default-Group

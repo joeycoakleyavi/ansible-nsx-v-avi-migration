@@ -1,0 +1,9 @@
+STATE: present
+TENANT: admin
+nsxt_cloudname: cloud_nsxt
+
+services:
+  - "{{ shared_services }}"
+  - "{{ ldap_389 }}"
+  - "{{ ldap_636 }}"
+  - "{{ smtp_25 }}"

@@ -1,0 +1,40 @@
+l7_allow_policy:
+  name: "l7_allow_policy"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: prod
+  nsx_t_t1: prod
+  pool:
+    - name: "webapp_80"
+      default_server_port: 80
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: System-Persistence-Http-Cookie
+  vsvip:
+    - enabled: true
+      addr: "4.3.2.1"
+  virtual_service:
+    - name: "l7_allow_policy"
+      enabled: false
+      services:
+        - port: 443
+          enable_ssl: true
+          enable_http2: false
+        - port: 80
+      application_profile: System-Secure-HTTP
+      network_profile: System-TCP-Proxy
+      terminate_ssl: true
+      ssl_profile: System-Standard
+      certificate: "*.example.com"
+      default_pool: webapp_80
+      service_engine_group: Default-Group
+      http_policies:
+        - l7_allow_policy
+  httppolicyset:
+    - name: l7_allow_policy
+      security:
+        ipaddrgroup: l7_allow_policy
+  ipaddrgroups:
+    - name: "l7_allow_policy"
+      filepath: ip_blocks/l7_allow_policy.txt

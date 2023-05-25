@@ -1,0 +1,24 @@
+ldap_389:
+  name: "ldap_389"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: dev
+  nsx_t_t1: dev
+  pool:
+    - name: "ldap_389"
+      default_server_port: 389
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+  vsvip:
+    - enabled: true
+      addr: "1.2.3.4"
+  virtual_service:
+    - name: "ldap_389"
+      enabled: false
+      services:
+        - port: 389
+      application_profile: "System-L4-Application"
+      default_pool: ldap_389
+      network_profile: System-TCP-Proxy
+      service_engine_group: Default-Group

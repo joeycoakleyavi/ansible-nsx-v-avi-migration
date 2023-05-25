@@ -1,0 +1,52 @@
+# This example covers an L7 virtual serivce which still requires preserve client IP.
+# Usually L7 applications can accept X-Forwarded-For, but some applications still
+# require this functionality.
+pcip_example_l7:
+  name: "pcip_example_l7"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: dev
+  nsx_t_t1: dev
+  networkservices: # Must ensure the floating IP does not conflict with anything on segment
+    - name: dev_pcip
+      seg: dev_se_group
+      floating_ip: 10.1.200.7
+  application_persistence_profiles:
+    - name: pcip_persistence
+      type: http_cookie
+      cookie_name: persistence
+  ipaddrgroups:
+    - name: pcip_example_dev
+      filepath: ip_blocks/pcip_example_dev.txt
+  pool:
+    - name: "pcip_example_l7"
+      default_server_port: 443
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      persistence: pcip_dev_persistence
+      is_nsg: true
+      enable_ssl: true
+  vsvip:
+    - enabled: true
+      addr: "10.255.2.2"
+  virtual_service:
+    - name: "pcip_example_l7"
+      enabled: true
+      services:
+        - port: 443
+          enable_ssl: true
+          enable_http2: false
+        - port: 80
+      application_profile: L7-Preserve-Client-IP #Must reference a PCIP app profile
+      network_profile: System-TCP-Proxy
+      default_pool: pcip_example_l7
+      terminate_ssl: true
+      ssl_profile: System-Standard
+      certificate: "*.example.com"
+      service_engine_group: Default-Group
+      http_policies:
+        - pcip_example_l7
+  httppolicyset:
+    - name: pcip_example_l7
+      security:
+        ipaddrgroup: pcip_example_l7

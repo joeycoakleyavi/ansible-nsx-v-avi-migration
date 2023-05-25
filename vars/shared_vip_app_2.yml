@@ -1,0 +1,23 @@
+ldap_636:
+  name: "ldap_636"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: dev
+  nsx_t_t1: dev
+  pool:
+    - name: "ldap_636"
+      default_server_port: 636
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+  virtual_service:
+    - name: "ldap_636"
+      vsvip_ref_ip: 1.2.3.4
+      vsvip_ref_vs: ldap_389
+      enabled: true
+      services:
+        - port: 636
+      application_profile: "System-L4-Application"
+      default_pool: ldap_636
+      network_profile: System-TCP-Proxy
+      service_engine_group: Default-Group

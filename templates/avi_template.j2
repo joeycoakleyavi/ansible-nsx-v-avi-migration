@@ -1,0 +1,462 @@
+#jinja2: trim_blocks: True, lstrip_blocks: True
+- pause:
+    prompt: Do you wish to install the {{ service.name }} components? (yes/no)
+  register: install
+
+{% if service.sslprofiles | default(False) %}
+{% for sslprofile in service.sslprofiles %}
+- name: "Create SSL Profile for {{ service.name }}"
+  avi_sslprofile:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ sslprofile.name }}
+    accepted_ciphers: "{{ sslprofile.accepted_ciphers | cipher_string() }}"
+    cipher_enums: 
+    {% for cipher_enum in sslprofile.cipher_enums %}
+    - {{ cipher_enum }}
+    {% endfor %}
+    accepted_versions:
+    {% for accepted_version in sslprofile.accepted_versions %}
+    - type: "{{ accepted_version }}"
+    {% endfor %}
+    type: SSL_PROFILE_TYPE_APPLICATION
+    enable_ssl_session_reuse: True
+    ssl_session_timeout: 86400
+    send_close_notify: True
+{% endfor %}
+{% endif %}
+
+{% if service.ipaddrgroups | default(False) %}
+{% for ipaddrgroup in service.ipaddrgroups %}
+- name: "Create IP Group {{ ipaddrgroup.name }}"
+  avi_ipaddrgroup:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ ipaddrgroup.name }}
+    {{ lookup('file', ipaddrgroup.filepath) | parse_ipgroup | to_yaml | indent }}
+{% endfor %}
+{% endif %}
+
+{% if service.networksecuritypolicy | default(False)%}
+{% for networksecuritypolicy in service.networksecuritypolicy %}
+- name: "Create NetworkSecurityPolicy for {{ networksecuritypolicy.name }}"
+  avi_networksecuritypolicy:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ networksecuritypolicy.name }}
+    rules:
+      - action: NETWORK_SECURITY_POLICY_ACTION_TYPE_DENY
+        age: 0
+        enable: true
+        index: 1
+        log: false
+        match:
+          client_ip:
+            group_refs:
+              - '/api/ipaddrgroup/?name={{ networksecuritypolicy.rules.ipaddrgroup }}'
+            match_criteria: IS_NOT_IN
+        name: rule-1
+{% endfor %}
+{% endif %}
+
+{% if service.networkservices | default(False) %}
+{% for networkservice in service.networkservices %}
+- name: "Create NetworkService for {{ service.name }}"
+  avi_networkservice:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ networkservice.name }}
+    cloud_ref: '/api/cloud/?name={{service.cloud}}'
+    se_group_ref: '/api/serviceenginegroup/?name={{ networkservice.seg }}'
+    vrf_ref: '/api/vrfcontext/?name={{ service.vrf_context }}'
+    service_type: ROUTING_SERVICE
+    routing_service:
+      enable_routing: false
+      routing_by_linux_ipstack: false
+      floating_intf_ip:
+        - addr: {{ networkservice.floating_ip }}
+          type: V4
+      graceful_restart: false
+      advertise_backend_networks: false
+      enable_auto_gateway: false
+      enable_vip_on_all_interfaces: true
+      enable_vmac: false
+  when: install.user_input | bool  
+{% endfor %}
+{% endif %}
+
+
+{% if service.application_persistence_profiles | default (False) %}
+{% for application_persistence_profile in service.application_persistence_profiles %}
+- name: "Create Persistence Profile {{ application_persistence_profile.name }}"
+  avi_applicationpersistenceprofile:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ application_persistence_profile.name }}
+  {% if application_persistence_profile.type == 'app_cookie' %}
+    persistence_type: "PERSISTENCE_TYPE_APP_COOKIE"
+    app_cookie_persistence_profile:
+      prst_hdr_name: {{ application_persistence_profile.cookie_name }}
+      timeout: {{ application_persistence_profile.timeout | default(20) }}
+  {% elif application_persistence_profile.type == 'http_cookie' %}
+    persistence_type: "PERSISTENCE_TYPE_HTTP_COOKIE"
+    http_cookie_persistence_profile:
+      always_send_cookie: false
+      cookie_name: {{ application_persistence_profile.cookie_name }}
+      is_persistent_cookie: false
+      http_only: false
+      timeout: {{ application_persistence_profile.timeout | default(20) }}
+  {% endif %}
+  when: install.user_input | bool
+{% endfor %}
+{% endif %}
+{% if service.vrf_contexts | default (False) %}
+{% set iterator = 11 %}
+{% for vrf_context in service.vrf_contexts %}
+- name: "Update Routes in {{ vrf_context.name }}"
+  avi_vrfcontext:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ vrf_context.name }}
+    state: {{ STATE }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    tenant: "{{ TENANT }}"
+    cloud_ref: "/api/cloud/?name={{ vrf_context.cloud }}"
+    static_routes:
+    {% for static_route in vrf_context.static_routes %}
+      - next_hop:
+          addr: {{ static_route.next_hop }}
+          type: V4
+        prefix:
+          ip_addr:
+            addr: {{ static_route.network }}
+            type: V4
+          mask: {{ static_route.mask }}
+        route_id: {{ iterator }}
+    {% endfor %}
+{% set iterator = iterator + 1 %}
+{% endfor %}
+{% endif %}
+
+{% if service.application_profiles | default(False) %}
+{% for application_profile in service.application_profiles %}
+- name: "Create Application Profile {{ application_profile.name }}"
+  avi_applicationprofile:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ application_profile.name }}
+    state: {{ STATE }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    tenant: "{{ TENANT }}"
+    {% if application_profile.preserve_client_ip | default(False) %}
+    preserve_client_ip: true
+    {% else %}
+    preserve_client_ip: false
+    {% endif %}
+    type: {{ application_profile.type }}
+    {% if application_profile.type == 'APPLICATION_PROFILE_TYPE_HTTP' %}
+    http_profile:
+      {% if application_profile.preserve_client_ip | default(False) %}
+      connection_multiplexing_enabled: false
+      {% else %}
+      connection_multiplexing_enabled: true
+      {% endif %}
+      hsts_enabled: true
+      http2_profile: {}
+      http_to_https: true
+      {% if application_profile.httponly_enabled | default(True) %}
+      httponly_enabled: true
+      {% else %}
+      httponly_enabled: false
+      {% endif %}
+      {% if application_profile.secure_cookie_enabled | default(True) %}
+      secure_cookie_enabled: true
+      {% else %}
+      secure_cookie_enabled: false
+      {% endif %}
+      server_side_redirect_to_https: true
+      true_client_ip:
+        headers:
+          - X-Forwarded-For
+      x_forwarded_proto_enabled: true
+    {% endif %}
+  when: install.user_input | bool
+{% endfor %}
+{% endif %}
+
+{% if service.service_engine_groups | default(False) %}
+{% for service_engine_group in service.service_engine_groups %}
+- name: "Create Service Engine Group {{ service_engine_group.name }}"
+  avi_serviceenginegroup:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: {{ service_engine_group.name }}
+    state: {{ STATE }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    tenant: "{{ TENANT }}"
+    se_name_prefix: {{ service_engine_group.se_name_prefix }}
+    ha_mode: {{ service_engine_group.ha_mode }}
+    max_num_se_dps: {{ service_engine_group.max_num_se_dps }}
+    vcpus_per_se: {{ service_engine_group.vcpus_per_se }}
+    max_vs_per_se: {{ service_engine_group.max_vs_per_se }}
+    use_hyperthreaded_cores: {{ service_engine_group.use_hyperthreaded_cores }}
+    cpu_reserve: {{ service_engine_group.cpu_reserve }}
+  when: install.user_input | bool
+{% endfor %}
+{% endif %}
+{% if service.healthmonitors | default(False) %}
+{% for healthmonitor in service.healthmonitors %}
+- name: "Create Health Monitor(s) for {{ service.name }}"
+  avi_healthmonitor:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    name: "{{ healthmonitor.name }}"
+    state: "{{ STATE }}"
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    tenant: "{{ TENANT }}"
+    send_interval: {{ healthmonitor.send_interval | default(10) }}
+    receive_timeout: {{ healthmonitor.send_interval | default(4) }}
+    successful_checks: {{ healthmonitor.send_interval | default(2) }}
+    failed_checks: {{ healthmonitor.send_interval | default(2) }}
+    type: "HEALTH_MONITOR_{{ healthmonitor.type }}"
+    {%- if healthmonitor.port | default(False) %} 
+    monitor_port: '{{ healthmonitor.port | string }}'
+    {% endif %}
+    {% if healthmonitor.type == 'HTTPS' %}
+    https_monitor:
+        http_request: '{{ healthmonitor.http_request | string }}'
+        http_response: '{{ healthmonitor.http_response | string }}'
+        http_response_code:
+        - HTTP_2XX
+        {% if healthmonitor.port | default(False) %} 
+        monitor_port: '{{ healthmonitor.port | string }}'
+        {% endif %}
+    {% elif healthmonitor.type == 'HTTP' %}
+    http_monitor:
+      http_request: '{{ healthmonitor.http_request | string }}'
+      http_response: '{{ healthmonitor.http_response | string }}'
+      http_response_code:
+      - HTTP_2XX
+    {% elif healthmonitor.type == 'TCP' %}
+    tcp_monitor:
+      tcp_half_open: false
+    monitor_port: {{ healthmonitor.port }}
+    {% endif %}
+  when: install.user_input | bool
+
+{% endfor %}
+{% endif %}
+{% if service.pool | default(False) %}
+{% for pool in service.pool %}
+- name: "Create Pool for {{ service.name }}"
+  avi_pool:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    tenant: "{{ TENANT }}"
+    name: "{{ pool.name }}"
+    {% if pool.fail_action | default(False) %}
+    fail_action:
+      local_rsp:
+        file:
+          content_type: text/html
+          file_content: "{{ lookup('file', pool.fail_action.html_file ) | b64encode }}"
+        status_code: FAIL_HTTP_STATUS_CODE_200
+      type: FAIL_ACTION_HTTP_LOCAL_RSP
+    {% endif %}
+    {% if pool.vrf_context | default(False) %}
+    vrf_ref: "/api/vrfcontext/?name={{ pool.vrf_context }}"
+    {% else %}
+    vrf_ref: "/api/vrfcontext/?name={{ service.vrf_context }}"
+    {% endif %}
+    state: "{{ STATE }}"
+    default_server_port: "{{ pool.default_server_port }}"
+    {% if pool.cloud | default(False) %}
+    cloud_ref: "/api/cloud/?name={{ pool.cloud }}"
+    {% else %}
+    cloud_ref: "/api/cloud/?name={{ service.cloud }}"
+    {% endif %}
+    lb_algorithm: "{{ pool.lb_algorithm }}"
+    {% if pool.is_nsg and not pool.nsg_name | default(False) %}
+    {% set guid_query = "[?name=='" + pool.name + "'].id" %}
+    {% set guid = nsxt_service_groups | json_query(guid_query) %}
+    nsx_securitygroup:
+      - {{ guid[0] | get_nsx_id }}
+    {% elif pool.is_nsg and pool.nsg_name | default(False) %}
+    {% set guid_query = "[?name=='" + pool.nsg_name + "'].id" %}
+    {% set guid = nsxt_service_groups | json_query(guid_query) %}
+    nsx_securitygroup:
+      - {{ guid[0] | get_nsx_id }}
+    {% else %}
+    {% endif %}
+    {% if service.nsx_t_t1 | default(False) %}
+    {% set t1_query = "[?name=='" + service.nsx_t_t1 + "'].id" %}
+    {% set t1_id = nsxt_tier1s | json_query(t1_query) %}
+    tier1_lr: "{{ t1_id[0] | get_nsx_id }}"
+    {% elif pool.nsx_t_t1 | default(False) %}
+    {% set t1_query = "[?name=='" + pool.nsx_t_t1 + "'].id" %}
+    {% set t1_id = nsxt_tier1s | json_query(t1_query) %}
+    tier1_lr: "{{ t1_id[0] | get_nsx_id }}"
+    {% endif %}
+    {% if pool.persistence | default(False)%}
+    application_persistence_profile_ref: "/api/applicationpersistenceprofile/?name={{ pool.persistence }}"
+    {% endif %}
+    {% if pool.poolservers | default(False) %}
+    servers:
+    {%- for server in pool.poolservers %}
+    - ip:
+        type: V4
+        addr: {{ server }}
+    {%- endfor %}
+    {% endif %}
+    health_monitor_refs: ["/api/healthmonitor/?name={{ pool.health_monitor }}"]
+    {% if pool.disable_port_translation | default(False) %}
+    use_service_port: true
+    {% endif %}
+    {% if pool.enable_ssl | default(False) %}
+    ssl_profile_ref: "/api/sslprofile/?name={{ pool.ssl_profile | default('System-Standard') }}"
+    ssl_key_and_certificate_ref: "/api/sslkeyandcertificate/?name={{ pool.se_client_cert | default ('System-Default-Cert') }}"
+    {% endif %}
+  when: install.user_input | bool
+
+{% endfor %}
+{% endif %}
+{% if service.poolgroup | default(False) %}
+{% for poolgroup in service.poolgroup %}
+- name: "Create PoolGroup for {{ service.name }}"
+  avi_poolgroup:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    tenant: "{{ TENANT }}"
+    name: "{{ poolgroup.name }}"
+    state: "{{ STATE }}"
+    cloud_ref: "/api/cloud/?name={{ service.cloud }}"
+    members:
+    {% for pool in poolgroup.pools %}
+      - pool_ref: "/api/pool/?name={{ pool.name }}"
+        priority_label: {{ pool.priority }}
+        ratio: {{ pool.ratio | default(1) }}
+    {% endfor %}
+  when: install.user_input | bool
+{% endfor %}
+{% endif %}
+{% if service.vsvip | default(False) %}
+{% for vsvip in service.vsvip %}
+- name: "Create VSVIP for {{ service.name }}"
+  avi_vsvip:
+    name: "vsvip-{{ service.name }}-{{ vsvip.addr }}"
+    state: "{{ STATE }}"
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    vrf_context_ref: "/api/vrfcontext/?name={{ service.vrf_context }}"
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    cloud_ref: "/api/cloud/?name={{ service.cloud }}"
+    {% if service.nsx_t_t1 | default(False) %}
+    {% set t1_query = "[?name=='" + service.nsx_t_t1 + "'].id" %}
+    {% set t1_id = nsxt_tier1s | json_query(t1_query) %}
+    tier1_lr: "{{ t1_id[0] | get_nsx_id }}"
+    {% endif %}
+    vip:
+    - vip_id: '1'
+      avi_allocated_fip: false
+      auto_allocate_ip: false
+      enabled: "{{ vsvip.enabled | default(true) }}"
+      auto_allocate_floating_ip: false
+      avi_allocated_vip: false
+      auto_allocate_ip_type: V4_ONLY
+      ip_address:
+        type: V4
+        {% if vsvip.temp_addr | default(False) %}
+        addr: "{{ vsvip.temp_addr }}"
+        {% else %}
+        addr: "{{ vsvip.addr }}"
+        {% endif %}
+  when: install.user_input | bool
+
+{% endfor %}
+{% endif %}
+{% if service.httppolicyset | default(False) %}
+{% for policy in service.httppolicyset %}
+- name: "Create HTTPPolicySet for {{ service.name }}"
+  avi_httppolicyset:
+    name: "{{ policy.name }}"
+    state: "{{ STATE }}"
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    {% if policy.request | default(False) %}
+    http_request_policy:
+    {% if policy.translated_from_haproxy | default(False) %}
+      {{ policy.request.rules | haproxy_to_avi() }}
+    {% else %}
+      rules:
+    {% set iterator = 1 %}
+    {% for rule in policy.request.rules %}
+        - 
+      {% for key, value in rule.items() %}
+          {{ key }}: {{ value }}
+      {% endfor %}
+    {% set iterator = iterator + 1 %}
+    {% endfor %}
+    {% endif %}
+    {% endif %}
+    {% if policy.security | default(False) %}
+    {% set iterator = 1 %}
+    http_security_policy:
+      rules:
+        - enable: true
+          index: {{ iterator }}
+          name: security-rule-{{ iterator }}
+          match:
+            client_ip:
+              group_refs:
+                - "/api/ipaddrgroup/?name={{ policy.security.ipaddrgroup }}"
+              match_criteria: IS_NOT_IN
+          action:
+            action: HTTP_SECURITY_ACTION_CLOSE_CONN
+    {% endif %}
+  when: install.user_input | bool
+{% endfor %}
+{% endif %}
+{% if service.virtual_service | default(False) %}
+{% for virtual_service in service.virtual_service %}
+- name: "Create VirtualService for {{ service.name }}"
+  avi_virtualservice:
+    avi_credentials: {{ '"{{ AVI_CREDENTIALS }}"' }}
+    application_profile_ref: "/api/applicationprofile/?name={{ virtual_service.application_profile }}"
+    cloud_ref: "/api/cloud?name={{ service.cloud }}"
+    enabled: {{ virtual_service.enabled }}
+    name: {{ virtual_service.name }}
+    vrf_context_ref: "/api/vrfcontext/?name={{ service.vrf_context }}"
+    state: {{ STATE }}
+    network_profile_ref: "/api/networkprofile/?name={{ virtual_service.network_profile }}"
+    {% if virtual_service.default_pool | default(false) %}
+    pool_ref: "/api/pool/?name={{ virtual_service.default_pool }}"
+    {% endif %}
+    {% if virtual_service.default_poolgroup | default(false) %}
+    pool_group_ref: "/api/poolgroup/?name={{ virtual_service.default_poolgroup }}"
+    {% endif %}
+    se_group_ref: "/api/serviceenginegroup/?name={{ virtual_service.service_engine_group }}"
+    tenant: {{ TENANT }}
+    tenant_ref: "/api/tenant/?name={{ TENANT }}"
+    {% if virtual_service.vsvip_ref_ip | default(False) %}
+    vsvip_ref: "/api/vsvip/?name=vsvip-{{ virtual_service.vsvip_ref_vs }}-{{ virtual_service.vsvip_ref_ip }}"
+    {% else %}
+    vsvip_ref: "/api/vsvip/?name=vsvip-{{ service.name }}-{{ service.vsvip[0].addr }}"
+    {% endif %}
+    {% if virtual_service.http_policies | default(False) %}
+    http_policies:
+      {% set iterator = 11 %}
+      {% for policy in virtual_service.http_policies %}
+      - http_policy_set_ref: "/api/httppolicyset/?name={{ policy }}"
+        index: {{ iterator }}
+        {% set iterator = iterator + 1 %}
+      {% endfor %}
+    {% endif %}
+    {% if service.networksecuritypolicy | default(False) %}
+    network_security_policy_ref: '/api/networksecuritypolicy/?name={{ service.networksecuritypolicy[0].name }}'
+    {% endif %}
+    services:
+    {% for service in virtual_service.services %}
+      - enable_ssl: {{ service.enable_ssl | default(false) }}
+        port: {{ service.port | int }}
+        port_range_end: {{ service.port | int }}
+        enable_http2: {{ service.enable_http2 | default(false) }}
+    {% endfor %}
+    {% if virtual_service.terminate_ssl | default(False) %}
+    ssl_key_and_certificate_refs: "/api/sslkeyandcertificate/?name={{ virtual_service.certificate | default('System-Default-Cert') }}"
+    ssl_profile_ref: "/api/sslprofile/?name={{ virtual_service.ssl_profile | default('System-Standard-PFS') }}"
+    {% endif %}
+  when: install.user_input | bool
+
+
+{% endfor %}
+{% endif %}

@@ -1,0 +1,28 @@
+smtp_25:
+  name: "smtp_25"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: smtp
+  nsx_t_t1: smtp
+  networkservices:
+    - name: smtp_ns
+      seg: smtp-seg
+      floating_ip: 10.0.0.23
+  pool:
+    - name: "smtp_25"
+      default_server_port: 25
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+  vsvip:
+    - enabled: true
+      addr: "1.2.3.4"
+  virtual_service:
+    - name: "smtp_25"
+      enabled: false
+      services:
+        - port: 25
+      application_profile: "L4-Preserve-Client-IP"
+      network_profile: System-TCP-Proxy
+      default_pool: smtp_25
+      service_engine_group: smtp-seg

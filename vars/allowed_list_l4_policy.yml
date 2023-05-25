@@ -1,0 +1,38 @@
+l4_allow_policy:
+  name: "l4_allow_policy"
+  enabled: true
+  cloud: owp-nsx-t
+  vrf_context: dev
+  nsx_t_t1: dev
+  pool:
+    - name: "l4_allow_policy"
+      default_server_port: 443
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: System-Persistence-Http-Cookie
+  vsvip:
+    - enabled: true
+      addr: "1.2.3.4"
+  virtual_service:
+    - name: "l4_allow_policy"
+      enabled: false
+      services:
+        - port: 443
+          enable_ssl: true
+          enable_http2: false
+        - port: 80
+      application_profile: "System-Secure-HTTP"
+      network_profile: System-TCP-Proxy
+      terminate_ssl: true
+      ssl_profile: System-Standard
+      certificate: "*.example.com"
+      service_engine_group: Default-Group
+      default_poolgroup: l4_allow_policy
+  ipaddrgroups:
+    - name: l4_allow_policy
+      filepath: ip_blocks/allowed_list_l4.txt
+  networksecuritypolicy:
+    - name: l4_allow_policy
+      rules:
+        ipaddrgroup: l4_allow_policy

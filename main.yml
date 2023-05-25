@@ -1,0 +1,59 @@
+---
+- hosts: localhost
+  connection: local
+  collections:
+    - vmware.alb
+  vars_files:
+    - ./variables.yml
+  tasks:
+    - include_vars:
+        dir: vars
+
+    - name: Lookup NSX-T Cloud UUID
+      avi_api_session:
+        avi_credentials: '{{ AVI_CREDENTIALS }}'
+        http_method: get
+        path: cloud
+        params:
+          name: '{{ nsxt_cloudname }}'
+          fields: uuid
+      register: nsxt_cloud
+
+    - name: Get NSX-T Security Groups
+      avi_api_session:
+        avi_credentials: '{{ AVI_CREDENTIALS }}'
+        http_method: post
+        path: nsxt/groups
+        data:
+          cloud_uuid: '{{ nsxt_cloud.obj.results[0].uuid }}'
+      register: nsxt_service_groups_raw
+
+    - set_fact:
+        nsxt_service_groups: '{{ nsxt_service_groups_raw.obj.resource.nsxt_groups }}'
+
+    - name: Get NSX-T T1s
+      avi_api_session:
+        avi_credentials: '{{ AVI_CREDENTIALS }}'
+        http_method: post
+        path: nsxt/tier1s
+        data:
+          cloud_uuid: '{{ nsxt_cloud.obj.results[0].uuid }}'
+      register: nsxt_tier1s_raw
+
+    - set_fact:
+        nsxt_tier1s: '{{ nsxt_tier1s_raw.obj.resource.nsxt_tier1routers }}'
+
+    - name: Build Play for Services
+      template:
+        src: avi_template.j2
+        dest: ./application_plays/{{ service.name + '_play.yml' }}
+      loop: '{{ services }}'
+      loop_control:
+        loop_var: service
+
+    - name: Deploy Services
+      include_tasks:
+        file: ./application_plays/{{ service.name + '_play.yml' }}
+      loop: '{{ services }}'
+      loop_control:
+        loop_var: service

@@ -1,0 +1,62 @@
+shared_services:
+  name: "shared_services"
+  enabled: true
+  cloud: cloud_nsxt
+  application_profiles:
+    - name: L7-Preserve-Client-IP
+      preserve_client_ip: true
+      type: APPLICATION_PROFILE_TYPE_HTTP
+    - name: L4-Preserve-Client-IP
+      preserve_client_ip: true
+      type: APPLICATION_PROFILE_TYPE_L4
+  sslprofiles:
+    - name: TLS1_0_Enabled
+      accepted_ciphers:
+      - ECDHE-ECDSA-AES128-GCM-SHA256
+      - ECDHE-ECDSA-AES256-GCM-SHA384
+      - ECDHE-RSA-AES128-GCM-SHA256
+      - ECDHE-RSA-AES256-GCM-SHA384
+      cipher_enums:
+      - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+      - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+      - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+      - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+      - TLS_AES_128_GCM_SHA256
+      - TLS_AES_256_GCM_SHA384
+      - TLS_RSA_WITH_AES_128_CBC_SHA
+      - TLS_RSA_WITH_AES_256_CBC_SHA
+      - TLS_RSA_WITH_AES_128_GCM_SHA256
+      accepted_versions:
+      - SSL_VERSION_TLS1
+      - SSL_VERSION_TLS1_1
+      - SSL_VERSION_TLS1_2
+      - SSL_VERSION_TLS1_3
+  httppolicyset:
+    - name: Insert_WL-Proxy-SSL_Header
+      request:
+        rules:
+          - name: Insert_WL-Proxy-SSL_Header
+            match:
+              protocol:
+                match_criteria: IS_IN
+                protocols: HTTPS
+            hdr_action:
+              - action: HTTP_ADD_HDR
+                hdr:
+                  name: WL-Proxy-SSL
+                  value:
+                    val: true
+    - name: Insert_IS_SSL_Header
+      request:
+        rules:
+          - name: Insert_IS_SSL_Header
+            match:
+              protocol:
+                match_criteria: IS_IN
+                protocols: HTTPS
+            hdr_action:
+              - action: HTTP_ADD_HDR
+                hdr:
+                  name: IS_SSL
+                  value:
+                    val: true

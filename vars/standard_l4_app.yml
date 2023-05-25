@@ -1,0 +1,25 @@
+mysql_3306:
+  name: "mysql_3306"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: prod
+  nsx_t_t1: prod
+  pool:
+    - name: "mysql_3306"
+      default_server_port: 3306
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: System-Persistence-Client-IP
+  vsvip:
+    - enabled: true
+      addr: "6.7.8.9"
+  virtual_service:
+    - name: "mysql_3306"
+      enabled: false
+      services:
+        - port: 3306
+      application_profile: System-L4-Application
+      network_profile: System-TCP-Proxy
+      default_pool: mysql_3306
+      service_engine_group: Default-Group

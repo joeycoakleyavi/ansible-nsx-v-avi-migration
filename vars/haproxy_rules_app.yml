@@ -1,0 +1,143 @@
+app_rules:
+  name: "app_rules"
+  enabled: true
+  cloud: cloud_nsxt
+  vrf_context: dev
+  nsx_t_t1: dev
+  application_persistence_profiles:
+    - name: apprules_jsession_id_persistence
+      type: app_cookie
+      cookie_name: JSESSIONID      
+  pool:
+    - name: "faculty_7013"
+      default_server_port: 7013
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: apprules_jsession_id_persistence
+    - name: "student_7013"
+      default_server_port: 7013
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: apprules_jsession_id_persistence
+    - name: "student006_7013"
+      default_server_port: 7013
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: apprules_jsession_id_persistence
+    - name: "extensibility_7013"
+      default_server_port: 7013
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: apprules_jsession_id_persistence
+    - name: "student010_7013"
+      default_server_port: 7013
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: "System-TCP"
+      is_nsg: true
+      persistence: apprules_jsession_id_persistence
+    - name: app_7013
+      default_server_port: 7013
+      lb_algorithm: "LB_ALGORITHM_ROUND_ROBIN"
+      health_monitor: System-TCP
+      is_nsg: true
+      persistence: apprules_jsession_id_persistence
+  poolgroup:
+    - name: faculty_7013
+      pools:
+        - name: faculty_7013
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+    - name: student_7013
+      pools:
+        - name: student_7013_2
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+    - name: student006_7013
+      pools:
+        - name: student006_7013
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+    - name: extensibility_7013
+      pools:
+        - name: extensibility_7013
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+    - name: student006_7013
+      pools:
+        - name: student006_7013
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+    - name: student010_7013
+      pools:
+        - name: student010_7013
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+    - name: app_7013
+      pools:
+        - name: app_7013
+          priority: 10
+        - name: maintenance_pool_dev
+          priority: 5
+  vsvip:
+    - enabled: true
+      addr: "1.2.3.4"
+  virtual_service:
+    - name: "apprules_443"
+      enabled: false
+      services:
+        - port: 443
+          enable_ssl: true
+          enable_http2: false
+        - port: 80
+      application_profile: "System-Secure-HTTP"
+      default_poolgroup: app_7013
+      network_profile: System-TCP-Proxy
+      terminate_ssl: true
+      ssl_profile: System-Standard
+      certificate: "*.example.com"
+      service_engine_group: Default-Group
+      http_policies:
+        - apprules_443
+  httppolicyset:
+    - name: apprules_443
+      translated_from_haproxy: true
+      request:
+        rules: 
+          [
+            {'line_number': 1, 'line': "acl pooldown_faculty_7013 nbsrv(faculty_7013) eq 0"},
+            {'line_number': 2, 'line': "acl pooldown_student_7013 nbsrv(student_7013) eq 0"},
+            {'line_number': 3, 'line': "acl pooldown_student006_7013 nbsrv(student006_7013) eq 0"},
+            {'line_number': 4, 'line': "acl pooldown_app_7013 nbsrv(app_7013) eq 0"},
+            {'line_number': 5, 'line': "acl pooldown_extensibility_7013 nbsrv(extensibility_7013) eq 0"},
+            {'line_number': 6, 'line': "acl pooldown_student006_7013 nbsrv(student006_7013) eq 0"},
+            {'line_number': 7, 'line': "acl pooldown_student010_7013 nbsrv(student010_7013) eq 0"},
+            {'line_number': 8, 'line': "acl is_StudentSelfService path_beg -i /StudentSelfService"},
+            {'line_number': 9, 'line': "acl is_FacultySelfService path_beg -i /FacultySelfService"},
+            {'line_number': 10, 'line': "acl is_EventManagement path_beg -i /SelfServiceGeneralEventManagement"},
+            {'line_number': 11, 'line': "acl is_Extensibility path_beg -i /Extensibility"},
+            {'line_number': 12, 'line': "acl is_GeneralSsb path_beg -i /GeneralSsb"},
+            {'line_number': 13, 'line': "acl is_CommunicationManagement path_beg -i /CommunicationManagement"},
+            {'line_number': 14, 'line': "use_backend faculty_7013 if is_FacultySelfService !pooldown_faculty_7013"},
+            {'line_number': 15, 'line': "use_backend student_7013 if is_StudentSelfService !pooldown_student_7013"},
+            {'line_number': 16, 'line': "use_backend student006_7013 if is_EventManagement !pooldown_student006_7013"},
+            {'line_number': 17, 'line': "use_backend extensibility_7013 if is_Extensibility !pooldown_extensibility_7013"},
+            {'line_number': 18, 'line': "use_backend student006_7013 if is_GeneralSsb !pooldown_student006_7013"},
+            {'line_number': 19, 'line': "use_backend student010_7013 if is_CommunicationManagement !pooldown_student010_7013"},
+            {'line_number': 20, 'line': "use_backend maintenancepage if is_FacultySelfService pooldown_faculty_7013"},
+            {'line_number': 21, 'line': "use_backend maintenancepage if is_StudentSelfService pooldown_student_7013"},
+            {'line_number': 22, 'line': "use_backend maintenancepage if is_EventManagement pooldown_student006_7013"},
+            {'line_number': 23, 'line': "use_backend maintenancepage if is_Extensibility pooldown_extensibility_7013"},
+            {'line_number': 24, 'line': "use_backend maintenancepage if is_GeneralSsb pooldown_student006_7013"},
+            {'line_number': 25, 'line': "use_backend maintenancepage if is_CommunicationManagement pooldown_student010_7013"},
+            {'line_number': 26, 'line': "use_backend maintenancepage if pooldown_app_7013"},
+          ]
